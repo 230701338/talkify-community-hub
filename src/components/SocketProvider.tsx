@@ -27,21 +27,38 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Socket event listeners
       newSocket.on('connect', () => {
         setIsConnected(true);
+        console.log('Socket connected');
+        
+        // Set up the user in the socket
         newSocket.emit('setup', authState.user);
+        
+        // Let the server know this user is online
         newSocket.emit('user online', authState.user?._id);
       });
       
       newSocket.on('connected', () => {
-        console.log('Socket connected');
+        console.log('Socket connected to server');
       });
       
       newSocket.on('disconnect', () => {
         setIsConnected(false);
+        console.log('Socket disconnected');
+      });
+      
+      // Handle online users
+      newSocket.on('get online users', (onlineUserIds: string[]) => {
+        console.log('Received online users:', onlineUserIds);
+        setOnlineUsers(new Set(onlineUserIds));
       });
       
       newSocket.on('user status', ({ userId, status }) => {
+        console.log(`User ${userId} is now ${status}`);
         if (status === 'online') {
-          setOnlineUsers(prev => new Set(prev).add(userId));
+          setOnlineUsers(prev => {
+            const newSet = new Set(prev);
+            newSet.add(userId);
+            return newSet;
+          });
         } else {
           setOnlineUsers(prev => {
             const newSet = new Set(prev);

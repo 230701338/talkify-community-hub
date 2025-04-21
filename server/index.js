@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const chatRoutes = require('./routes/chats');
 const messageRoutes = require('./routes/messages');
+const User = require('./models/User');
 
 // Load environment variables
 dotenv.config();
@@ -46,14 +47,67 @@ const io = new Server(server, {
   }
 });
 
+// Track online users
+const onlineUsers = new Set();
+
 // Socket.io connection
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
   
   // Join user's personal room
-  socket.on('setup', (userData) => {
+  socket.on('setup', async (userData) => {
+    if (!userData || !userData._id) return;
+    
     socket.join(userData._id);
     socket.emit('connected');
+    
+    // Set user as online in database
+    try {
+      await User.findByIdAndUpdate(userData._id, { isOnline: true });
+    } catch (error) {
+      console.error('Error updating user online status:', error);
+    }
+    
+    // Broadcast online users to all clients
+    io.emit('get online users', [...onlineUsers]);
+  });
+  
+  // Handle user going online
+  socket.on('user online', async (userId) => {
+    if (!userId) return;
+    
+    console.log('User online:', userId);
+    onlineUsers.add(userId);
+    
+    // Set user as online in database
+    try {
+      await User.findByIdAndUpdate(userId, { isOnline: true });
+    } catch (error) {
+      console.error('Error updating user online status:', error);
+    }
+    
+    // Broadcast to all clients
+    io.emit('user status', { userId, status: 'online' });
+    io.emit('get online users', [...onlineUsers]);
+  });
+  
+  // Handle user going offline
+  socket.on('user offline', async (userId) => {
+    if (!userId) return;
+    
+    console.log('User offline:', userId);
+    onlineUsers.delete(userId);
+    
+    // Set user as offline in database
+    try {
+      await User.findByIdAndUpdate(userId, { isOnline: false });
+    } catch (error) {
+      console.error('Error updating user offline status:', error);
+    }
+    
+    // Broadcast to all clients
+    io.emit('user status', { userId, status: 'offline' });
+    io.emit('get online users', [...onlineUsers]);
   });
   
   // Join chat room
@@ -80,18 +134,12 @@ io.on('connection', (socket) => {
   socket.on('typing', (room) => socket.in(room).emit('typing', room));
   socket.on('stop typing', (room) => socket.in(room).emit('stop typing', room));
   
-  // Handle user going online/offline
-  socket.on('user online', (userId) => {
-    io.emit('user status', { userId, status: 'online' });
-  });
-  
-  socket.on('user offline', (userId) => {
-    io.emit('user status', { userId, status: 'offline' });
-  });
-  
   // Handle disconnect
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
+    
+    // Note: We can't directly update the user's status here since we don't know which user
+    // was associated with this socket. The proper way would be to maintain a map of socket IDs to user IDs.
   });
 });
 

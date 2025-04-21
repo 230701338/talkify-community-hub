@@ -53,6 +53,16 @@ export const userService = {
     return response.data;
   },
   
+  getOnlineUsers: async () => {
+    const response = await api.get('/users/online');
+    return response.data;
+  },
+  
+  getAllUsers: async () => {
+    const response = await api.get('/users');
+    return response.data;
+  },
+  
   getUserById: async (id: string) => {
     const response = await api.get(`/users/${id}`);
     return response.data;

@@ -25,7 +25,25 @@ router.get('/', protect, async (req, res) => {
       _id: { $ne: req.user._id },
     }).select('-password');
     
+    console.log(`Found ${users.length} users for search: ${req.query.search || 'all'}`);
     res.json(users);
+  } catch (error) {
+    console.error('Error in user search:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/users/online
+// @desc    Get all online users
+// @access  Private
+router.get('/online', protect, async (req, res) => {
+  try {
+    const onlineUsers = await User.find({
+      isOnline: true,
+      _id: { $ne: req.user._id }
+    }).select('-password');
+    
+    res.json(onlineUsers);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

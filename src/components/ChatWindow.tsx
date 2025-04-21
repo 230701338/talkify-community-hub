@@ -2,62 +2,55 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useAuth } from '@/context/AuthContext';
-import { useSocket } from '@/components/SocketProvider';
-import UserAvatar from './UserAvatar';
-import MessageInput from './MessageInput';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Info, MoreVertical, Users } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Message, User } from '@/types';
+import { format } from 'date-fns';
 import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { User } from '@/types';
+  Info, 
+  MoreVertical, 
+  Send, 
+  Smile,
+  ArrowLeft 
+} from 'lucide-react';
+import UserAvatar from './UserAvatar';
+import { useSocket } from './SocketProvider';
+import MessageInput from './MessageInput';
 
 const ChatWindow: React.FC = () => {
-  const { state, fetchMessages, sendMessage } = useChat();
+  const { state: chatState, fetchMessages, sendMessage, selectChat } = useChat();
   const { state: authState } = useAuth();
-  const { socket } = useSocket();
-  const [message, setMessage] = useState('');
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const { socket, onlineUsers } = useSocket();
   const [isTyping, setIsTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // Fetch messages when a chat is selected
   useEffect(() => {
-    if (state.selectedChat) {
-      fetchMessages(state.selectedChat._id);
-      
-      // Join the chat room via socket
-      if (socket) {
-        socket.emit('join chat', state.selectedChat._id);
-      }
+    if (chatState.selectedChat) {
+      fetchMessages(chatState.selectedChat._id);
     }
-  }, [state.selectedChat, socket]);
+  }, [chatState.selectedChat]);
   
-  // Set up socket typing event listeners
+  // Scroll to bottom of messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatState.messages]);
+  
+  // Set up socket typing listeners
   useEffect(() => {
     if (!socket) return;
     
-    socket.on('typing', (room) => {
-      if (state.selectedChat?._id === room) {
+    socket.on('typing', (room: string) => {
+      if (chatState.selectedChat?._id === room) {
         setIsTyping(true);
       }
     });
     
-    socket.on('stop typing', (room) => {
-      if (state.selectedChat?._id === room) {
+    socket.on('stop typing', (room: string) => {
+      if (chatState.selectedChat?._id === room) {
         setIsTyping(false);
       }
     });
@@ -66,276 +59,211 @@ const ChatWindow: React.FC = () => {
       socket.off('typing');
       socket.off('stop typing');
     };
-  }, [socket, state.selectedChat]);
+  }, [socket, chatState.selectedChat]);
   
-  useEffect(() => {
-    scrollToBottom();
-  }, [state.messages]);
-  
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-  
-  const handleTyping = () => {
-    if (!socket || !state.selectedChat) return;
+  const typingHandler = () => {
+    if (!socket || !chatState.selectedChat) return;
     
-    // If user was already typing, clear the timeout
+    // If not already typing, emit typing event
+    socket.emit('typing', chatState.selectedChat._id);
+    
+    // Clear existing timeout
     if (typingTimeout) clearTimeout(typingTimeout);
     
-    // Emit typing event
-    socket.emit('typing', state.selectedChat._id);
-    
-    // Set timeout to stop typing after 3 seconds
+    // Set new timeout
     const timeout = setTimeout(() => {
-      socket.emit('stop typing', state.selectedChat._id);
+      socket.emit('stop typing', chatState.selectedChat._id);
     }, 3000);
     
     setTypingTimeout(timeout);
   };
   
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      // Clear typing status
-      if (socket && typingTimeout) {
-        clearTimeout(typingTimeout);
-        socket.emit('stop typing', state.selectedChat?._id);
-      }
-      
-      sendMessage(message);
-      setMessage('');
+  const handleSendMessage = (content: string) => {
+    if (!content.trim()) return;
+    
+    sendMessage(content);
+    setMessage('');
+    
+    // Stop typing indicator
+    if (socket && chatState.selectedChat) {
+      socket.emit('stop typing', chatState.selectedChat._id);
     }
   };
   
-  const formatTime = (date: Date) => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isUserOnline = (userId: string) => {
+    return onlineUsers.has(userId);
   };
   
-  const formatDate = (date: Date) => {
-    const messageDate = new Date(date);
-    const today = new Date();
+  const getChatName = () => {
+    if (!chatState.selectedChat) return '';
     
-    // Check if same day
-    if (messageDate.toDateString() === today.toDateString()) {
-      return 'Today';
+    if (chatState.selectedChat.isGroupChat) {
+      return chatState.selectedChat.chatName;
     }
     
-    // Check if yesterday
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (messageDate.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
+    // For one-on-one chats, show the other user's name
+    const otherUser = chatState.selectedChat.users.find(
+      u => u._id !== authState.user?._id
+    );
+    
+    return otherUser?.name || '';
+  };
+  
+  const getChatAvatar = () => {
+    if (!chatState.selectedChat || chatState.selectedChat.isGroupChat) {
+      return null;
     }
     
-    // Otherwise return date
-    return messageDate.toLocaleDateString();
+    // For one-on-one chats, show the other user's avatar
+    const otherUser = chatState.selectedChat.users.find(
+      u => u._id !== authState.user?._id
+    );
+    
+    return otherUser;
   };
   
-  const getChatPartner = (): User | undefined => {
-    if (!state.selectedChat || !authState.user) return undefined;
-    
-    if (state.selectedChat.isGroupChat) return undefined;
-    
-    return state.selectedChat.users.find(u => u._id !== authState.user?._id);
-  };
-  
-  const renderDateSeparator = (date: Date, index: number) => {
-    if (index === 0) return true;
-    
-    const prevDate = new Date(state.messages[index - 1].timestamp);
-    const currDate = new Date(date);
-    
-    return prevDate.toDateString() !== currDate.toDateString();
-  };
-  
-  if (!state.selectedChat) {
+  if (!chatState.selectedChat) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900">
-        <div className="text-center p-6 max-w-md">
-          <Users className="mx-auto h-12 w-12 text-talkify-primary mb-4" />
-          <h3 className="text-xl font-semibold mb-2">Welcome to Talkify</h3>
-          <p className="text-muted-foreground">
-            Select a chat from the sidebar or start a new conversation to begin messaging.
+      <div className="flex-1 flex flex-col items-center justify-center bg-background">
+        <div className="max-w-md text-center p-6">
+          <h2 className="text-2xl font-bold mb-2">Welcome to Talkify</h2>
+          <p className="text-muted-foreground mb-4">
+            Select a chat or start a new conversation to begin messaging.
           </p>
         </div>
       </div>
     );
   }
+
+  const getSenderUser = (message: Message): User => {
+    return message.sender;
+  };
+  
+  const isSameUser = (messages: Message[], m: Message, i: number): boolean => {
+    return i > 0 && messages[i - 1].sender._id === m.sender._id;
+  };
+  
+  const formatTime = (date: Date | string): string => {
+    if (typeof date === 'string') {
+      date = new Date(date);
+    }
+    return format(date, 'h:mm a');
+  };
   
   return (
-    <div className="flex-1 flex flex-col h-screen">
+    <div className="flex-1 flex flex-col bg-background">
       {/* Chat header */}
-      <div className="py-3 px-4 border-b flex items-center justify-between bg-white dark:bg-slate-950">
+      <div className="px-4 py-3 border-b flex items-center">
+        <Button 
+          variant="ghost" 
+          size="icon"
+          className="md:hidden mr-2"
+          onClick={() => selectChat(null)}
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
         <div className="flex items-center">
-          {state.selectedChat.isGroupChat ? (
-            <div className="w-10 h-10 rounded-full bg-talkify-secondary text-white flex items-center justify-center">
-              <Users className="h-5 w-5" />
-            </div>
-          ) : (
+          {getChatAvatar() ? (
             <UserAvatar 
-              user={getChatPartner() || state.selectedChat.users[0]} 
-              showStatus 
+              user={getChatAvatar() as User} 
+              size="sm" 
+              showStatus={true}
+              isOnline={isUserOnline(getChatAvatar()?._id || '')}
             />
-          )}
-          
-          <div className="ml-3">
-            <div className="font-medium">{state.selectedChat.chatName}</div>
-            <div className="text-xs text-muted-foreground">
-              {state.selectedChat.isGroupChat 
-                ? `${state.selectedChat.users.length} members`
-                : getChatPartner()?.isOnline ? 'Online' : 'Offline'
-              }
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-talkify-secondary text-white flex items-center justify-center">
+              <Info className="h-5 w-5" />
             </div>
+          )}
+          <div className="ml-3">
+            <div className="font-medium">{getChatName()}</div>
+            {chatState.selectedChat.isGroupChat ? (
+              <div className="text-xs text-muted-foreground">
+                {chatState.selectedChat.users.length} members
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                {isUserOnline(getChatAvatar()?._id || '') ? 'Online' : 'Offline'}
+              </div>
+            )}
           </div>
         </div>
-        
-        <div className="flex items-center">
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => setIsInfoOpen(true)}
-          >
-            <Info className="h-5 w-5" />
+        <div className="ml-auto">
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="h-5 w-5" />
           </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Chat Options</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Search in Chat</DropdownMenuItem>
-              <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
-              {state.selectedChat.isGroupChat && (
-                <DropdownMenuItem>Leave Group</DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-500">
-                Delete Chat
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
       
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4 bg-gray-50 dark:bg-slate-900">
+      <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
-          {state.messages.map((msg, index) => (
-            <React.Fragment key={msg._id}>
-              {renderDateSeparator(msg.timestamp, index) && (
-                <div className="flex justify-center my-4">
-                  <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-md">
-                    {formatDate(msg.timestamp)}
-                  </span>
-                </div>
-              )}
-              
-              <div className={`flex items-start ${msg.sender._id === authState.user?._id ? 'justify-end' : ''}`}>
-                {msg.sender._id !== authState.user?._id && (
-                  <UserAvatar user={msg.sender} size="sm" className="mt-1" />
-                )}
-                
-                <div className={`flex flex-col ${msg.sender._id === authState.user?._id ? 'items-end' : 'items-start ml-2'}`}>
-                  {state.selectedChat.isGroupChat && msg.sender._id !== authState.user?._id && (
-                    <span className="text-xs text-muted-foreground ml-1 mb-1">
-                      {msg.sender.name}
-                    </span>
+          {chatState.messages.map((msg, i) => {
+            const isSender = msg.sender._id === authState.user?._id;
+            const showAvatar = !isSameUser(chatState.messages, msg, i);
+            
+            return (
+              <div 
+                key={msg._id} 
+                className={`flex ${isSender ? 'justify-end' : 'justify-start'}`}
+              >
+                <div 
+                  className={`flex ${isSender ? 'flex-row-reverse' : 'flex-row'} max-w-[70%]`}
+                >
+                  {!isSender && showAvatar && (
+                    <div className="flex flex-col justify-end mb-1 mr-2">
+                      <UserAvatar user={getSenderUser(msg)} size="sm" />
+                    </div>
                   )}
-                  
-                  <div className={`message-bubble ${
-                    msg.sender._id === authState.user?._id 
-                      ? 'message-bubble-sent' 
-                      : 'message-bubble-received'
-                  }`}>
-                    {msg.content}
+                  <div>
+                    {!isSender && showAvatar && (
+                      <div className="text-xs text-muted-foreground mb-1 ml-1">
+                        {getSenderUser(msg).name}
+                      </div>
+                    )}
+                    <div 
+                      className={`px-4 py-2 rounded-lg ${
+                        isSender 
+                          ? 'bg-talkify-primary text-white rounded-tr-none' 
+                          : 'bg-muted rounded-tl-none'
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+                    <div 
+                      className={`text-xs text-muted-foreground mt-1 ${
+                        isSender ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      {formatTime(msg.createdAt)}
+                    </div>
                   </div>
-                  
-                  <span className="text-xs text-muted-foreground mt-1 mx-1">
-                    {formatTime(msg.timestamp)}
-                  </span>
                 </div>
               </div>
-            </React.Fragment>
-          ))}
+            );
+          })}
+          
+          {/* Typing indicator */}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-muted rounded-lg px-4 py-2">
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
       
-      {/* Typing indicator */}
-      {isTyping && (
-        <div className="px-4 py-2 text-xs text-muted-foreground italic">
-          Someone is typing...
-        </div>
-      )}
-      
       {/* Message input */}
-      <MessageInput 
-        value={message}
-        onChange={setMessage}
-        onSend={handleSendMessage}
-        onTyping={handleTyping}
-      />
-      
-      {/* Chat info dialog */}
-      <Dialog open={isInfoOpen} onOpenChange={setIsInfoOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{state.selectedChat.chatName}</DialogTitle>
-            <DialogDescription>
-              {state.selectedChat.isGroupChat 
-                ? 'Group chat details' 
-                : 'Chat with ' + state.selectedChat.chatName
-              }
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            {state.selectedChat.isGroupChat && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Admin</h4>
-                <div className="flex items-center p-2 rounded-md">
-                  <UserAvatar user={state.selectedChat.admin || state.selectedChat.users[0]} size="sm" />
-                  <div className="ml-2">
-                    <div className="text-sm font-medium">
-                      {state.selectedChat.admin?.name || state.selectedChat.users[0].name}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <div>
-              <h4 className="text-sm font-medium mb-2">
-                {state.selectedChat.isGroupChat ? 'Members' : 'Participant'}
-              </h4>
-              <div className="space-y-1 max-h-60 overflow-y-auto">
-                {state.selectedChat.users.map(user => (
-                  <div key={user._id} className="flex items-center p-2 rounded-md">
-                    <UserAvatar user={user} size="sm" showStatus />
-                    <div className="ml-2">
-                      <div className="text-sm font-medium">{user.name}</div>
-                      <div className="text-xs text-muted-foreground">{user.email}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {state.selectedChat.isGroupChat && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Created</h4>
-                <div className="text-sm text-muted-foreground">
-                  {new Date(state.selectedChat.createdAt).toLocaleDateString()} at{' '}
-                  {new Date(state.selectedChat.createdAt).toLocaleTimeString()}
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <div className="p-4 border-t">
+        <MessageInput onSendMessage={handleSendMessage} onTyping={typingHandler} />
+      </div>
     </div>
   );
 };

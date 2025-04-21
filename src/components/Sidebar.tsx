@@ -24,7 +24,8 @@ import {
   Search,
   Settings,
   Users,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { userService } from '@/services/api';
 import { useSocket } from '@/components/SocketProvider';
@@ -45,30 +46,61 @@ const Sidebar: React.FC = () => {
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     fetchChats();
   }, []);
   
+  // Fetch all available users initially when dialog opens
+  useEffect(() => {
+    if (isCreateChatOpen && !userSearchTerm) {
+      searchAllUsers();
+    }
+  }, [isCreateChatOpen]);
+  
   // Debounced search for users
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (userSearchTerm.trim()) {
-        searchUsers(userSearchTerm);
-      } else {
-        setSearchResults([]);
+      if (isCreateChatOpen) {
+        if (userSearchTerm.trim()) {
+          searchUsers(userSearchTerm);
+        } else {
+          searchAllUsers();
+        }
       }
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [userSearchTerm]);
+  }, [userSearchTerm, isCreateChatOpen]);
+
+  const searchAllUsers = async () => {
+    try {
+      setIsSearching(true);
+      const results = await userService.getAllUsers();
+      console.log('All users:', results);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch users. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const searchUsers = async (search: string) => {
-    if (search.trim() === '') return;
+    if (search.trim() === '') {
+      return searchAllUsers();
+    }
     
     try {
       setIsSearching(true);
       const results = await userService.searchUsers(search);
+      console.log('Search results for', search, ':', results);
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -79,6 +111,26 @@ const Sidebar: React.FC = () => {
       });
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const refreshChats = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchChats();
+      toast({
+        title: 'Success',
+        description: 'Chats refreshed successfully.',
+      });
+    } catch (error) {
+      console.error('Error refreshing chats:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to refresh chats. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -164,6 +216,15 @@ const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-talkify-primary">Talkify</h1>
           <div className="flex space-x-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={refreshChats} 
+              disabled={isRefreshing}
+              title="Refresh Chats"
+            >
+              <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
             <Button variant="ghost" size="icon" onClick={logout} title="Logout">
               <LogOut className="h-5 w-5" />
             </Button>
@@ -222,16 +283,22 @@ const Sidebar: React.FC = () => {
                       className="flex items-center p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                       onClick={() => handleCreateChat(user._id)}
                     >
-                      <UserAvatar user={user} size="sm" showStatus />
+                      <UserAvatar 
+                        user={user} 
+                        size="sm" 
+                        showStatus={true}
+                        isOnline={onlineUsers.has(user._id)}
+                      />
                       <span className="ml-2">{user.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{user.email}</span>
                     </div>
                   ))}
                 </div>
-              ) : userSearchTerm ? (
+              ) : (
                 <p className="text-center text-sm text-muted-foreground py-2">
                   No users found. Try a different search term.
                 </p>
-              ) : null}
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -313,7 +380,12 @@ const Sidebar: React.FC = () => {
                       }`}
                       onClick={() => toggleUserSelect(user._id)}
                     >
-                      <UserAvatar user={user} size="sm" showStatus />
+                      <UserAvatar 
+                        user={user} 
+                        size="sm" 
+                        showStatus={true} 
+                        isOnline={onlineUsers.has(user._id)}
+                      />
                       <span className="ml-2">{user.name}</span>
                       {selectedUsers.includes(user._id) && (
                         <div className="ml-auto w-4 h-4 bg-talkify-primary rounded-full flex items-center justify-center">
@@ -325,11 +397,11 @@ const Sidebar: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              ) : userSearchTerm ? (
+              ) : (
                 <p className="text-center text-sm text-muted-foreground py-2">
                   No users found. Try a different search term.
                 </p>
-              ) : null}
+              )}
             </div>
             
             <DialogFooter>

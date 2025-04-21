@@ -24,6 +24,11 @@ const chatSchema = new mongoose.Schema(
     admin: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
+    },
+    unreadCounts: {
+      type: Map,
+      of: Number,
+      default: {}
     }
   },
   { timestamps: true }

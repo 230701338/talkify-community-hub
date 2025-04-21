@@ -2,6 +2,9 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { ChatState, Chat, Message, User } from '@/types';
 import { useSocket } from '@/components/SocketProvider';
+import { chatService, messageService } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 // Define action types
 type ChatAction = 
@@ -13,7 +16,8 @@ type ChatAction =
   | { type: 'FETCH_MESSAGES_SUCCESS'; payload: Message[] }
   | { type: 'FETCH_MESSAGES_FAILURE'; payload: string }
   | { type: 'NEW_MESSAGE'; payload: Message }
-  | { type: 'CLEAR_CHAT' };
+  | { type: 'CLEAR_CHAT' }
+  | { type: 'UPDATE_CHAT'; payload: Chat };
 
 // Chat context interface
 interface ChatContextType {
@@ -81,6 +85,16 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
         ...state,
         messages: [...state.messages, action.payload]
       };
+    case 'UPDATE_CHAT': {
+      const updatedChats = state.chats.map(chat => 
+        chat._id === action.payload._id ? action.payload : chat
+      );
+      return {
+        ...state,
+        chats: updatedChats,
+        selectedChat: state.selectedChat?._id === action.payload._id ? action.payload : state.selectedChat
+      };
+    }
     case 'CLEAR_CHAT':
       return {
         ...initialState
@@ -90,158 +104,69 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
   }
 };
 
-// Mock data
-const mockUsers: User[] = [
-  { _id: '1', name: 'John Doe', email: 'john@example.com', isOnline: true, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=john' },
-  { _id: '2', name: 'Jane Smith', email: 'jane@example.com', isOnline: false, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=jane' },
-  { _id: '3', name: 'Bob Johnson', email: 'bob@example.com', isOnline: true, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob' },
-  { _id: '4', name: 'Alice Williams', email: 'alice@example.com', isOnline: true, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice' },
-];
-
-const mockChats: Chat[] = [
-  {
-    _id: '1',
-    chatName: 'Jane Smith',
-    isGroupChat: false,
-    users: [mockUsers[0], mockUsers[1]],
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2023-01-05'),
-  },
-  {
-    _id: '2',
-    chatName: 'Bob Johnson',
-    isGroupChat: false,
-    users: [mockUsers[0], mockUsers[2]],
-    createdAt: new Date('2023-01-10'),
-    updatedAt: new Date('2023-01-15'),
-  },
-  {
-    _id: '3',
-    chatName: 'Project Team',
-    isGroupChat: true,
-    users: [mockUsers[0], mockUsers[1], mockUsers[2]],
-    admin: mockUsers[0],
-    createdAt: new Date('2023-01-20'),
-    updatedAt: new Date('2023-01-25'),
-  }
-];
-
-const mockMessages: Record<string, Message[]> = {
-  '1': [
-    {
-      _id: '101',
-      sender: mockUsers[1],
-      content: 'Hey, how are you?',
-      timestamp: new Date('2023-01-02T10:00:00'),
-      chat: '1'
-    },
-    {
-      _id: '102',
-      sender: mockUsers[0],
-      content: 'I\'m good, thanks! How about you?',
-      timestamp: new Date('2023-01-02T10:05:00'),
-      chat: '1'
-    },
-    {
-      _id: '103',
-      sender: mockUsers[1],
-      content: 'Doing great! Working on a new project.',
-      timestamp: new Date('2023-01-02T10:10:00'),
-      chat: '1'
-    }
-  ],
-  '2': [
-    {
-      _id: '201',
-      sender: mockUsers[2],
-      content: 'Did you check that document I sent?',
-      timestamp: new Date('2023-01-11T14:00:00'),
-      chat: '2'
-    },
-    {
-      _id: '202',
-      sender: mockUsers[0],
-      content: 'Yes, I did. It looks good!',
-      timestamp: new Date('2023-01-11T14:15:00'),
-      chat: '2'
-    }
-  ],
-  '3': [
-    {
-      _id: '301',
-      sender: mockUsers[0],
-      content: 'Welcome to the project team!',
-      timestamp: new Date('2023-01-21T09:00:00'),
-      chat: '3'
-    },
-    {
-      _id: '302',
-      sender: mockUsers[1],
-      content: 'Thanks! Excited to work with everyone.',
-      timestamp: new Date('2023-01-21T09:05:00'),
-      chat: '3'
-    },
-    {
-      _id: '303',
-      sender: mockUsers[2],
-      content: 'Let\'s get started!',
-      timestamp: new Date('2023-01-21T09:10:00'),
-      chat: '3'
-    }
-  ]
-};
-
 // Provider component
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const { socket } = useSocket();
+  const { state: authState } = useAuth();
+  const { toast } = useToast();
   
   // Set up socket event listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !authState.user) return;
     
     // Listen for incoming messages
-    socket.on('message received', (newMessageReceived) => {
+    socket.on('message received', (newMessageReceived: Message) => {
       // If chat is open, add message to state
-      if (state.selectedChat?._id === newMessageReceived.chat._id) {
+      if (state.selectedChat?._id === newMessageReceived.chat) {
         dispatch({ type: 'NEW_MESSAGE', payload: newMessageReceived });
+      } else {
+        // Show notification for messages in other chats
+        toast({
+          title: `New message from ${newMessageReceived.sender.name}`,
+          description: newMessageReceived.content.length > 50 
+            ? `${newMessageReceived.content.substring(0, 47)}...` 
+            : newMessageReceived.content,
+        });
       }
       
-      // TODO: Show notification for messages in other chats
+      // Update chats list to reflect new messages
+      fetchChats();
     });
     
     // Clean up
     return () => {
       socket.off('message received');
     };
-  }, [socket, state.selectedChat]);
+  }, [socket, state.selectedChat, authState.user]);
 
-  // Mock functions
   const fetchChats = async () => {
     try {
       dispatch({ type: 'FETCH_CHATS_REQUEST' });
-      // Mock API call
-      setTimeout(() => {
-        dispatch({ type: 'FETCH_CHATS_SUCCESS', payload: mockChats });
-      }, 500);
+      const data = await chatService.getChats();
+      dispatch({ type: 'FETCH_CHATS_SUCCESS', payload: data });
     } catch (error) {
+      console.error('Failed to fetch chats:', error);
       dispatch({ type: 'FETCH_CHATS_FAILURE', payload: 'Failed to fetch chats' });
     }
   };
 
   const selectChat = (chat: Chat) => {
     dispatch({ type: 'SELECT_CHAT', payload: chat });
+    
+    // Join chat room via socket
+    if (socket) {
+      socket.emit('join chat', chat._id);
+    }
   };
 
   const fetchMessages = async (chatId: string) => {
     try {
       dispatch({ type: 'FETCH_MESSAGES_REQUEST' });
-      // Mock API call
-      setTimeout(() => {
-        const messages = mockMessages[chatId] || [];
-        dispatch({ type: 'FETCH_MESSAGES_SUCCESS', payload: messages });
-      }, 500);
+      const data = await messageService.getMessages(chatId);
+      dispatch({ type: 'FETCH_MESSAGES_SUCCESS', payload: data });
     } catch (error) {
+      console.error('Failed to fetch messages:', error);
       dispatch({ type: 'FETCH_MESSAGES_FAILURE', payload: 'Failed to fetch messages' });
     }
   };
@@ -250,93 +175,69 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!state.selectedChat) return;
     
     try {
-      // Mock sending message
-      const newMessage: Message = {
-        _id: Math.random().toString(36).substring(7),
-        sender: mockUsers[0], // Current user
-        content,
-        timestamp: new Date(),
-        chat: state.selectedChat._id
-      };
-      
-      // Add to mock messages
-      mockMessages[state.selectedChat._id] = [
-        ...(mockMessages[state.selectedChat._id] || []),
-        newMessage
-      ];
+      const newMessage = await messageService.sendMessage(content, state.selectedChat._id);
       
       // Update state
       dispatch({ type: 'NEW_MESSAGE', payload: newMessage });
       
       // If socket is available, emit the message
       if (socket) {
-        socket.emit('new message', {
-          ...newMessage,
-          chat: state.selectedChat
-        });
+        socket.emit('new message', newMessage);
       }
+      
+      // Refresh chats to update latest message
+      fetchChats();
     } catch (error) {
       console.error('Failed to send message:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to send message. Please try again.',
+        variant: 'destructive'
+      });
     }
   };
 
   const createChat = async (userId: string) => {
-    // Find the user
-    const user = mockUsers.find(u => u._id === userId);
-    if (!user) return;
-    
-    // Check if chat already exists
-    const existingChat = mockChats.find(c => 
-      !c.isGroupChat && c.users.some(u => u._id === userId)
-    );
-    
-    if (existingChat) {
-      selectChat(existingChat);
-      return;
+    try {
+      const newChat = await chatService.createChat(userId);
+      
+      // Update chats list
+      await fetchChats();
+      
+      // Select the new chat
+      selectChat(newChat);
+    } catch (error) {
+      console.error('Failed to create chat:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create chat. Please try again.',
+        variant: 'destructive'
+      });
     }
-    
-    // Create new chat
-    const newChat: Chat = {
-      _id: Math.random().toString(36).substring(7),
-      chatName: user.name,
-      isGroupChat: false,
-      users: [mockUsers[0], user], // Current user and selected user
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    // Add to mock chats
-    mockChats.push(newChat);
-    
-    // Update state
-    dispatch({ type: 'FETCH_CHATS_SUCCESS', payload: [...mockChats] });
-    selectChat(newChat);
   };
 
   const createGroupChat = async (name: string, userIds: string[]) => {
-    // Find the users
-    const users = [
-      mockUsers[0], // Current user
-      ...mockUsers.filter(u => userIds.includes(u._id))
-    ];
-    
-    // Create new group chat
-    const newChat: Chat = {
-      _id: Math.random().toString(36).substring(7),
-      chatName: name,
-      isGroupChat: true,
-      users,
-      admin: mockUsers[0], // Current user is admin
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    // Add to mock chats
-    mockChats.push(newChat);
-    
-    // Update state
-    dispatch({ type: 'FETCH_CHATS_SUCCESS', payload: [...mockChats] });
-    selectChat(newChat);
+    try {
+      const newChat = await chatService.createGroupChat(name, userIds);
+      
+      // Update chats list
+      await fetchChats();
+      
+      // Select the new chat
+      selectChat(newChat);
+      
+      toast({
+        title: 'Success',
+        description: `Group chat "${name}" created successfully.`
+      });
+    } catch (error) {
+      console.error('Failed to create group chat:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create group chat. Please try again.',
+        variant: 'destructive'
+      });
+    }
   };
 
   const clearChat = () => {

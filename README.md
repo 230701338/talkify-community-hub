@@ -1,73 +1,121 @@
-# Welcome to your Lovable project
 
-## Project info
+# Talkify - Real-Time Chat Application
 
-**URL**: https://lovable.dev/projects/506d4317-6b2d-4584-b77e-810cdb9476d7
+Talkify is a full-featured chat application built with the MERN stack (MongoDB, Express, React, Node.js). It provides one-to-one messaging, group chats, and user authentication.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- Real-time messaging using Socket.io
+- One-to-one private chat
+- Group chat with admin roles
+- User authentication and authorization
+- Online/offline status indicators
+- Message timestamps
+- User profiles with avatars
+- Modern UI with responsive design
 
-**Use Lovable**
+## Tech Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/506d4317-6b2d-4584-b77e-810cdb9476d7) and start prompting.
+### Frontend
+- React
+- TypeScript
+- TailwindCSS
+- Shadcn UI Components
+- Socket.io-client
+- React Router
+- Axios
 
-Changes made via Lovable will be committed automatically to this repo.
+### Backend
+- Node.js
+- Express
+- MongoDB
+- Mongoose
+- Socket.io
+- JWT Authentication
+- Bcrypt.js
 
-**Use your preferred IDE**
+## Project Structure
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+The project is divided into two main parts:
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. **Frontend (React)** - Located in the main directory
+2. **Backend (Node.js)** - Located in the `/server` directory
 
-Follow these steps:
+## Getting Started
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Prerequisites
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+- Node.js (v14 or later)
+- MongoDB (local or Atlas)
+- npm or yarn
 
-# Step 3: Install the necessary dependencies.
-npm i
+### Installation
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+1. Clone the repository
+```
+git clone <repository-url>
+cd talkify
+```
+
+2. Install frontend dependencies
+```
+npm install
+```
+
+3. Install backend dependencies
+```
+cd server
+npm install
+```
+
+4. Create environment variables
+```
+# In server directory
+cp .env.example .env
+```
+Edit the `.env` file to match your MongoDB connection string and other configurations.
+
+### Running the Application
+
+1. Start the backend server
+```
+cd server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+2. Start the frontend application (in a new terminal)
+```
+npm run dev
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+3. Open your browser and navigate to `http://localhost:8080`
 
-**Use GitHub Codespaces**
+## API Endpoints
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Authentication
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Log in a user
+- `GET /api/auth/user` - Get current user
+- `POST /api/auth/logout` - Log out a user
 
-## What technologies are used for this project?
+### Users
+- `GET /api/users` - Get all users or search users
+- `GET /api/users/:id` - Get a user by ID
+- `PUT /api/users/profile` - Update user profile
 
-This project is built with:
+### Chats
+- `POST /api/chats` - Create or access one-to-one chat
+- `GET /api/chats` - Get all chats for a user
+- `POST /api/chats/group` - Create a group chat
+- `PUT /api/chats/rename` - Rename a group chat
+- `PUT /api/chats/add` - Add user to group chat
+- `PUT /api/chats/remove` - Remove user from group chat
+- `GET /api/chats/:id` - Get a specific chat by ID
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Messages
+- `POST /api/messages` - Send a new message
+- `GET /api/messages/:chatId` - Get all messages for a chat
 
-## How can I deploy this project?
+## License
 
-Simply open [Lovable](https://lovable.dev/projects/506d4317-6b2d-4584-b77e-810cdb9476d7) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+[MIT](LICENSE)

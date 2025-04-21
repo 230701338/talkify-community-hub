@@ -61,6 +61,16 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				talkify: {
+					primary: '#8B5CF6',
+					secondary: '#7E69AB',
+					accent: '#D6BCFA',
+					light: '#F1F0FB',
+					dark: '#1A1F2C',
+					online: '#10B981',
+					offline: '#6B7280',
+					hover: '#9b87f5'
 				}
 			},
 			borderRadius: {
@@ -84,11 +94,28 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'message-appear': {
+					from: {
+						opacity: '0',
+						transform: 'translateY(10px)'
+					},
+					to: {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
+				},
+				'pulse-dot': {
+					'0%': { transform: 'scale(0.95)', boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.7)' },
+					'70%': { transform: 'scale(1)', boxShadow: '0 0 0 6px rgba(16, 185, 129, 0)' },
+					'100%': { transform: 'scale(0.95)', boxShadow: '0 0 0 0 rgba(16, 185, 129, 0)' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'message-appear': 'message-appear 0.3s ease-out',
+				'pulse-dot': 'pulse-dot 2s infinite'
 			}
 		}
 	},

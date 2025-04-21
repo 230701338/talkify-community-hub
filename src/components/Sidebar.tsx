@@ -418,7 +418,11 @@ const Sidebar: React.FC = () => {
       {/* User profile */}
       {authState.user && (
         <div className="p-4 border-t flex items-center">
-          <UserAvatar user={authState.user} showStatus={true} isOnline={true} />
+          <UserAvatar 
+            user={authState.user} 
+            showStatus={true} 
+            isOnline={true}
+          />
           <div className="ml-3 flex-1 truncate">
             <div className="font-medium">{authState.user.name}</div>
             <div className="text-xs text-muted-foreground">{authState.user.email}</div>

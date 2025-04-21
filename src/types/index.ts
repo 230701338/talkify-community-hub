@@ -1,4 +1,3 @@
-
 export interface User {
   _id: string;
   name: string;
@@ -11,8 +10,10 @@ export interface Message {
   _id: string;
   sender: User;
   content: string;
-  timestamp: Date;
   chat: string;
+  readBy: User[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Chat {
@@ -21,7 +22,8 @@ export interface Chat {
   isGroupChat: boolean;
   users: User[];
   admin?: User;
-  lastMessage?: Message;
+  latestMessage?: Message;
+  unreadCounts?: Map<string, number>;
   createdAt: Date;
   updatedAt: Date;
 }

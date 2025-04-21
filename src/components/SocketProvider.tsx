@@ -8,6 +8,7 @@ interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
   onlineUsers: Set<string>;
+  refreshOnlineUsers: () => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -17,6 +18,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const { state: authState } = useAuth();
+  
+  // Function to refresh online users
+  const refreshOnlineUsers = () => {
+    if (socket) {
+      console.log('Requesting refresh of online users');
+      socket.emit('get online users');
+    }
+  };
   
   useEffect(() => {
     if (authState.isAuthenticated && authState.user) {
@@ -34,6 +43,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         
         // Let the server know this user is online
         newSocket.emit('user online', authState.user?._id);
+        
+        // Request online users list
+        newSocket.emit('get online users');
       });
       
       newSocket.on('connected', () => {
@@ -79,7 +91,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [authState.isAuthenticated, authState.user]);
   
   return (
-    <SocketContext.Provider value={{ socket, isConnected, onlineUsers }}>
+    <SocketContext.Provider value={{ socket, isConnected, onlineUsers, refreshOnlineUsers }}>
       {children}
     </SocketContext.Provider>
   );

@@ -48,18 +48,21 @@ export const authService = {
 
 // User services
 export const userService = {
-  searchUsers: async (search: string) => {
-    const response = await api.get(`/users?search=${search}`);
+  searchUsers: async (search: string = '') => {
+    const response = await api.get(`/users?search=${encodeURIComponent(search)}`);
+    console.log('Search users response:', response.data);
     return response.data;
   },
   
   getOnlineUsers: async () => {
     const response = await api.get('/users/online');
+    console.log('Online users response:', response.data);
     return response.data;
   },
   
   getAllUsers: async () => {
     const response = await api.get('/users');
+    console.log('All users response:', response.data);
     return response.data;
   },
   

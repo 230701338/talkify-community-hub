@@ -38,14 +38,16 @@ router.get('/', protect, async (req, res) => {
 // @access  Private
 router.get('/online', protect, async (req, res) => {
   try {
+    // Find all users marked as online in the database
     const onlineUsers = await User.find({
       isOnline: true,
       _id: { $ne: req.user._id }
     }).select('-password');
     
+    console.log(`Found ${onlineUsers.length} online users`);
     res.json(onlineUsers);
   } catch (error) {
-    console.error(error);
+    console.error('Error fetching online users:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

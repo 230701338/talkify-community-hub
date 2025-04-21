@@ -50,6 +50,25 @@ const io = new Server(server, {
 // Track online users
 const onlineUsers = new Set();
 
+// Function to broadcast online users to all clients
+const broadcastOnlineUsers = async () => {
+  try {
+    // Get fresh list of online users from database
+    const dbOnlineUsers = await User.find({ isOnline: true }).select('_id');
+    const onlineUserIds = dbOnlineUsers.map(user => user._id.toString());
+    
+    // Ensure our in-memory set matches the database
+    onlineUsers.clear();
+    onlineUserIds.forEach(id => onlineUsers.add(id));
+    
+    // Broadcast to all clients
+    io.emit('get online users', [...onlineUsers]);
+    console.log('Broadcasting online users:', [...onlineUsers]);
+  } catch (error) {
+    console.error('Error broadcasting online users:', error);
+  }
+};
+
 // Socket.io connection
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
@@ -64,12 +83,16 @@ io.on('connection', (socket) => {
     // Set user as online in database
     try {
       await User.findByIdAndUpdate(userData._id, { isOnline: true });
+      onlineUsers.add(userData._id);
+      await broadcastOnlineUsers();
     } catch (error) {
       console.error('Error updating user online status:', error);
     }
-    
-    // Broadcast online users to all clients
-    io.emit('get online users', [...onlineUsers]);
+  });
+  
+  // Handle get online users request
+  socket.on('get online users', async () => {
+    await broadcastOnlineUsers();
   });
   
   // Handle user going online
@@ -82,13 +105,13 @@ io.on('connection', (socket) => {
     // Set user as online in database
     try {
       await User.findByIdAndUpdate(userId, { isOnline: true });
+      
+      // Broadcast to all clients
+      io.emit('user status', { userId, status: 'online' });
+      await broadcastOnlineUsers();
     } catch (error) {
       console.error('Error updating user online status:', error);
     }
-    
-    // Broadcast to all clients
-    io.emit('user status', { userId, status: 'online' });
-    io.emit('get online users', [...onlineUsers]);
   });
   
   // Handle user going offline
@@ -101,13 +124,13 @@ io.on('connection', (socket) => {
     // Set user as offline in database
     try {
       await User.findByIdAndUpdate(userId, { isOnline: false });
+      
+      // Broadcast to all clients
+      io.emit('user status', { userId, status: 'offline' });
+      await broadcastOnlineUsers();
     } catch (error) {
       console.error('Error updating user offline status:', error);
     }
-    
-    // Broadcast to all clients
-    io.emit('user status', { userId, status: 'offline' });
-    io.emit('get online users', [...onlineUsers]);
   });
   
   // Join chat room
@@ -135,11 +158,15 @@ io.on('connection', (socket) => {
   socket.on('stop typing', (room) => socket.in(room).emit('stop typing', room));
   
   // Handle disconnect
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log('Client disconnected:', socket.id);
     
     // Note: We can't directly update the user's status here since we don't know which user
     // was associated with this socket. The proper way would be to maintain a map of socket IDs to user IDs.
+    // Instead, we'll rely on the 'user offline' event sent before disconnection.
+    
+    // Still broadcast updated online users
+    await broadcastOnlineUsers();
   });
 });
 

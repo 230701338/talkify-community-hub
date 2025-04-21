@@ -25,54 +25,91 @@ import {
   Settings,
   Users,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  UsersRound
 } from 'lucide-react';
 import { userService } from '@/services/api';
 import { useSocket } from '@/components/SocketProvider';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from './ui/badge';
 
 const Sidebar: React.FC = () => {
   const { state: chatState, fetchChats, selectChat, createChat, createGroupChat } = useChat();
   const { state: authState, logout } = useAuth();
-  const { onlineUsers } = useSocket();
+  const { onlineUsers, refreshOnlineUsers } = useSocket();
   const { toast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [onlineUsersList, setOnlineUsersList] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingOnlineUsers, setIsLoadingOnlineUsers] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showOnlineUsersDialog, setShowOnlineUsersDialog] = useState(false);
 
+  // Fetch chats on component mount
   useEffect(() => {
     fetchChats();
   }, []);
   
+  // Fetch online users periodically
+  useEffect(() => {
+    fetchOnlineUsers();
+    
+    // Set up interval to refresh online users every 30 seconds
+    const interval = setInterval(() => {
+      fetchOnlineUsers();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [onlineUsers]);
+  
   // Fetch all available users initially when dialog opens
   useEffect(() => {
-    if (isCreateChatOpen && !userSearchTerm) {
+    if (isCreateChatOpen) {
       searchAllUsers();
     }
   }, [isCreateChatOpen]);
   
+  // Fetch online users when dialog opens
+  useEffect(() => {
+    if (showOnlineUsersDialog) {
+      fetchOnlineUsers();
+    }
+  }, [showOnlineUsersDialog]);
+  
   // Debounced search for users
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (isCreateChatOpen) {
-        if (userSearchTerm.trim()) {
-          searchUsers(userSearchTerm);
-        } else {
-          searchAllUsers();
-        }
+      if (isCreateChatOpen && userSearchTerm.trim()) {
+        searchUsers(userSearchTerm);
       }
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
   }, [userSearchTerm, isCreateChatOpen]);
+
+  const fetchOnlineUsers = async () => {
+    try {
+      setIsLoadingOnlineUsers(true);
+      const onlineUsersData = await userService.getOnlineUsers();
+      setOnlineUsersList(onlineUsersData);
+      console.log('Fetched online users:', onlineUsersData);
+      
+      // Also refresh the socket's online users list
+      refreshOnlineUsers();
+    } catch (error) {
+      console.error('Error fetching online users:', error);
+    } finally {
+      setIsLoadingOnlineUsers(false);
+    }
+  };
 
   const searchAllUsers = async () => {
     try {
@@ -93,10 +130,6 @@ const Sidebar: React.FC = () => {
   };
 
   const searchUsers = async (search: string) => {
-    if (search.trim() === '') {
-      return searchAllUsers();
-    }
-    
     try {
       setIsSearching(true);
       const results = await userService.searchUsers(search);
@@ -118,15 +151,16 @@ const Sidebar: React.FC = () => {
     setIsRefreshing(true);
     try {
       await fetchChats();
+      await fetchOnlineUsers();
       toast({
         title: 'Success',
-        description: 'Chats refreshed successfully.',
+        description: 'Chats and online users refreshed successfully.',
       });
     } catch (error) {
-      console.error('Error refreshing chats:', error);
+      console.error('Error refreshing data:', error);
       toast({
         title: 'Error',
-        description: 'Failed to refresh chats. Please try again.',
+        description: 'Failed to refresh data. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -291,6 +325,9 @@ const Sidebar: React.FC = () => {
                       />
                       <span className="ml-2">{user.name}</span>
                       <span className="ml-2 text-xs text-muted-foreground">{user.email}</span>
+                      {onlineUsers.has(user._id) && (
+                        <Badge variant="success" className="ml-auto text-xs">Online</Badge>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -394,6 +431,9 @@ const Sidebar: React.FC = () => {
                           </svg>
                         </div>
                       )}
+                      {onlineUsers.has(user._id) && (
+                        <Badge variant="success" className="ml-1 text-xs">Online</Badge>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -423,6 +463,81 @@ const Sidebar: React.FC = () => {
           </DialogContent>
         </Dialog>
       </div>
+      
+      {/* Online users button */}
+      <Dialog open={showOnlineUsersDialog} onOpenChange={setShowOnlineUsersDialog}>
+        <DialogTrigger asChild>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="mx-4 mt-2 flex items-center justify-center"
+          >
+            <UsersRound className="h-4 w-4 mr-2 text-green-500" />
+            <span>Online Users</span>
+            <Badge variant="outline" className="ml-2">{onlineUsersList.length}</Badge>
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Online Users</DialogTitle>
+            <DialogDescription>
+              These users are currently online. Click on a user to start a chat.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="mt-4">
+            {isLoadingOnlineUsers ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : onlineUsersList.length > 0 ? (
+              <div className="border rounded-md overflow-hidden">
+                {onlineUsersList.map(user => (
+                  <div 
+                    key={user._id}
+                    className="flex items-center p-3 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b last:border-b-0"
+                    onClick={() => {
+                      handleCreateChat(user._id);
+                      setShowOnlineUsersDialog(false);
+                    }}
+                  >
+                    <UserAvatar 
+                      user={user} 
+                      showStatus 
+                      isOnline={true} 
+                    />
+                    <div className="ml-3">
+                      <div className="font-medium">{user.name}</div>
+                      <div className="text-xs text-muted-foreground">{user.email}</div>
+                    </div>
+                    <Badge variant="success" className="ml-auto">Online</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-muted-foreground py-8">
+                No users are currently online
+              </p>
+            )}
+            
+            <div className="flex justify-center mt-4">
+              <Button onClick={fetchOnlineUsers} disabled={isLoadingOnlineUsers}>
+                {isLoadingOnlineUsers ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       {/* Chat list */}
       <ScrollArea className="flex-1">
